@@ -6,6 +6,7 @@
 #include <netinet/udp.h>
 #include <netinet/tcp.h>
 #include <netinet/ip.h>
+#include <netinet/if_ether.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
@@ -54,9 +55,10 @@ int main() {
     if (!log_file.is_open())
         throw std::runtime_error("Failed to open log file for writing");
     std::cout << "Setting up raw socket\n";
-    const int raw_socket_sniff = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    const int raw_socket_sniff = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (raw_socket_sniff < 0)
         throw std::runtime_error("Failed to successfully open the raw socket");
+	setsockopt(raw_socket_sniff, SOL_SOCKET, SO_BINDTODEVICE, "eth0", strlen("eth0") + 1);
     while (true) {
         socklen_t socket_addr_size = sizeof(saddr);
         const int data_recv_size = recvfrom(raw_socket_sniff, buffer, 65536, 0, &saddr, &socket_addr_size);
@@ -100,7 +102,7 @@ static void printIPHeader(unsigned char* Buffer, const int size) {
 	unsigned short iphdrlen;
 		
 	struct iphdr *iph = (struct iphdr *)Buffer;
-	iphdrlen =iph->ihl*4;
+	iphdrlen = iph->ihl * 4;
 	
 	memset(&source, 0, sizeof(source));
 	source.sin_addr.s_addr = iph->saddr;
