@@ -11,3 +11,6 @@ file(GLOB pkts_src CONFIGURE_DEPENDS
 add_executable(packet_sniffer
     ${pkts_src}
 )
+
+add_subdirectory(tests)
+enable_testing()
