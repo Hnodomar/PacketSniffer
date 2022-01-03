@@ -75,7 +75,7 @@ private:
 			processPacket(buffer, size_of_data_received);
 		}
 	}
-	void processPacket(const Buffer& buffer, const uint32_t data_size) {
+	void processPacket(Buffer& buffer, uint32_t data_size) {
 		const iphdr* ip_header = reinterpret_cast<const iphdr*>(buffer.data() + ETH_HEADER_SIZE);
 		const uint16_t mask = (1 << IP_FRAG_OFFSET_SIZE_IN_BITS) - 1;
 		const uint16_t fragment_offset = ntohs(ip_header->frag_off) & mask;
@@ -85,11 +85,12 @@ private:
 			if (protocol != NetworkProtocol::TCP || protocol != NetworkProtocol::UDP) {
 				return;
 			}
+			const uint8_t ip_hdr_len = ip_header->ihl * 4;
 			const uint16_t source_port = ntohs(
-				static_cast<uint16_t>(*(buffer.data() + ETH_HEADER_SIZE + IP_HEADER_SIZE))
+				static_cast<uint16_t>(*(buffer.data() + ETH_HEADER_SIZE + ip_hdr_len))
 			);
 			const uint16_t dest_port = ntohs(
-				static_cast<uint16_t>(*(buffer.data() + ETH_HEADER_SIZE + IP_HEADER_SIZE + sizeof(uint16_t)))
+				static_cast<uint16_t>(*(buffer.data() + ETH_HEADER_SIZE + ip_hdr_len + sizeof(uint16_t)))
 			);
 			IPV4Connection ipv4_conn(
 				source_port, 
@@ -98,7 +99,16 @@ private:
 				ntohl(ip_header->daddr)
 			);
 			const uint16_t pkt_id = ntohs(ip_header->id);
-			fragmented_packets_[ipv4_conn][pkt_id].addPacket(buffer, data_size);
+			auto& fragmented_pkt = fragmented_packets_[ipv4_conn][pkt_id];
+			fragmented_pkt.addPacket(buffer, data_size, fragment_offset, more_fragments);
+			if (fragmented_pkt.canBeDefragmented()) {
+				auto defragmented_packet = fragmented_pkt.defragmentPacket();
+				std::copy_n(defragmented_packet.begin(), defragmented_packet.size(), buffer.begin());
+				data_size = defragmented_packet.size();
+			}
+			else {
+				return;
+			}
 		}
 		switch (static_cast<NetworkProtocol>(ip_header->protocol)) {
 			case NetworkProtocol::TCP: 
@@ -118,13 +128,6 @@ private:
 		const tcphdr* tcp_header = reinterpret_cast<const tcphdr*>(
 			buffer.data() + ETH_HEADER_SIZE + IP_HEADER_SIZE
 		);
-		IPV4Connection connection(
-			ntohs(tcp_header->source),
-			ntohs(tcp_header->dest),
-			ntohs(tcp_header->)
-		);
-
-
 	}
 	void chooseUDPAnalyzer(const Buffer& buffer, const uint32_t data_size) {
 		const udphdr* udp_header = reinterpret_cast<const udphdr*>(
